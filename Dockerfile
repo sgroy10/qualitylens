@@ -1,15 +1,10 @@
 FROM node:20-slim
 
-# Install poppler-utils for PDF image extraction and chromium for Puppeteer
+# Install poppler-utils for PDF image extraction
 RUN apt-get update && apt-get install -y \
     poppler-utils \
-    chromium \
-    fonts-liberation \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
-
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 

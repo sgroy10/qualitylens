@@ -145,22 +145,8 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
       </div>
     </body></html>`;
 
-    // Try puppeteer, fallback to HTML
-    try {
-      const puppeteer = await import('puppeteer');
-      const browser = await puppeteer.default.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdf = await page.pdf({ format: 'A4', printBackground: true });
-      await browser.close();
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=checklist-${cl.department}-${cl.order_ref}.pdf`);
-      res.send(pdf);
-    } catch (err) {
-      console.log('Puppeteer not available, returning HTML:', err.message);
-      res.setHeader('Content-Type', 'text/html');
-      res.send(html);
-    }
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
   } catch (err) {
     res.status(500).json({ error: 'Failed to generate PDF' });
   }
