@@ -53,14 +53,23 @@ export async function processManual(manualId, filePath) {
 
       // Process extracted images
       const imageFiles = await fs.readdir(imageDir);
-      const pngFiles = imageFiles.filter(f => f.endsWith('.png'));
+      const pngFiles = imageFiles.filter(f => f.endsWith('.png')).sort();
+      const totalImages = pngFiles.length;
+      const totalPdfPages = pdfData.numpages || 1;
 
-      for (const imgFile of pngFiles) {
+      for (let imgIdx = 0; imgIdx < pngFiles.length; imgIdx++) {
+        const imgFile = pngFiles[imgIdx];
         const imgPath = path.join(imageDir, imgFile);
         const imgBuffer = await fs.readFile(imgPath);
 
         // Skip tiny images (likely artifacts)
         if (imgBuffer.length < 5000) continue;
+
+        // Approximate page number: distribute images proportionally across pages
+        // pdfimages extracts in page order, so img-000 is from early pages, img-NNN from later
+        const estimatedPage = totalImages > 0
+          ? Math.max(1, Math.ceil(((imgIdx + 1) / totalImages) * totalPdfPages))
+          : 1;
 
         let caption = '';
         let topicTags = '';
@@ -86,7 +95,7 @@ export async function processManual(manualId, filePath) {
 
         await pool.query(
           'INSERT INTO manual_images (manual_id, page_number, image_path, caption, topic_tags) VALUES ($1, $2, $3, $4, $5)',
-          [manualId, 1, relativePath, caption, topicTags]
+          [manualId, estimatedPage, relativePath, caption, topicTags]
         );
       }
     } catch (err) {

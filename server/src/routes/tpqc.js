@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../db/index.js';
 import { authenticate } from '../middleware/auth.js';
+import { generateTPQCPDF } from '../services/pdf.print.service.js';
 
 const router = Router();
 
@@ -54,53 +55,13 @@ router.put('/:id', authenticate, async (req, res) => {
 
 router.get('/:id/pdf', authenticate, async (req, res) => {
   try {
-    const results = await pool.query(
-      `SELECT t.*, os.vendor_style_code, o.order_ref, c.name as customer_name
-       FROM tp_qc_results t
-       LEFT JOIN order_styles os ON t.style_id = os.id
-       JOIN orders o ON t.order_id = o.id
-       JOIN customers c ON o.customer_id = c.id
-       WHERE t.id = $1`,
-      [req.params.id]
-    );
-    if (results.rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    const r = results.rows[0];
-
-    const html = `<!DOCTYPE html><html><head><style>
-      body { font-family: Arial, sans-serif; padding: 40px; color: #333; }
-      h1 { color: #1F3864; border-bottom: 2px solid #2E75B6; padding-bottom: 10px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-      th { background: #1F3864; color: white; padding: 10px; text-align: left; }
-      td { border: 1px solid #ddd; padding: 10px; }
-      .footer { margin-top: 60px; display: flex; justify-content: space-between; }
-      .sign-box { border-top: 1px solid #333; width: 200px; text-align: center; padding-top: 8px; }
-    </style></head><body>
-      <h1>Third Party QC Result Sheet</h1>
-      <p><strong>Company:</strong> Sky Gold & Diamonds Ltd, Navi Mumbai</p>
-      <p><strong>Customer:</strong> ${r.customer_name}</p>
-      <p><strong>Order Ref:</strong> ${r.order_ref}</p>
-      <p><strong>Date:</strong> ${r.check_date || new Date().toLocaleDateString()}</p>
-      <table>
-        <tr><th>Style Code</th><th>Qty Sent</th><th>Standard/Spec</th><th>Result</th><th>TP Remarks</th><th>Corrective Action</th></tr>
-        <tr>
-          <td>${r.vendor_style_code || '-'}</td>
-          <td>${r.qty_sent || '-'}</td>
-          <td>${r.standard_reference || '-'}</td>
-          <td style="color: ${r.result === 'pass' ? 'green' : 'red'}; font-weight: bold;">${(r.result || '').toUpperCase()}</td>
-          <td>${r.tp_remarks || '-'}</td>
-          <td>${r.corrective_action || '-'}</td>
-        </tr>
-      </table>
-      <div class="footer">
-        <div class="sign-box">QA Manager</div>
-        <div class="sign-box">Third Party QC Inspector</div>
-      </div>
-    </body></html>`;
-
-    res.setHeader('Content-Type', 'text/html');
-    res.send(html);
+    const pdfBuffer = await generateTPQCPDF(parseInt(req.params.id));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="tpqc-result-${req.params.id}.pdf"`);
+    res.send(pdfBuffer);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to generate PDF' });
+    console.error('TPQC PDF error:', err);
+    res.status(500).json({ error: 'PDF generation failed: ' + err.message });
   }
 });
 

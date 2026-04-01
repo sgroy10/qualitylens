@@ -2,6 +2,7 @@ import { Router } from 'express';
 import pool from '../db/index.js';
 import { authenticate } from '../middleware/auth.js';
 import { generateChecklist } from '../services/checklist.service.js';
+import { generateChecklistPDF } from '../services/pdf.print.service.js';
 
 const router = Router();
 
@@ -96,59 +97,13 @@ router.put('/:id/items/:itemId', authenticate, async (req, res) => {
 
 router.get('/:id/pdf', authenticate, async (req, res) => {
   try {
-    const checklist = await pool.query(
-      `SELECT cl.*, o.order_ref, c.name as customer_name FROM checklists cl
-       JOIN orders o ON cl.order_id = o.id JOIN customers c ON o.customer_id = c.id WHERE cl.id = $1`,
-      [req.params.id]
-    );
-    const items = await pool.query('SELECT * FROM checklist_items WHERE checklist_id = $1 ORDER BY sequence_no', [req.params.id]);
-
-    const cl = checklist.rows[0];
-    const html = `<!DOCTYPE html><html><head><style>
-      body { font-family: Arial, sans-serif; padding: 40px; color: #333; }
-      h1 { color: #1F3864; border-bottom: 2px solid #2E75B6; padding-bottom: 10px; }
-      .header { margin-bottom: 20px; }
-      .header p { margin: 4px 0; }
-      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-      th { background: #1F3864; color: white; padding: 8px; text-align: left; font-size: 12px; }
-      td { border: 1px solid #ddd; padding: 8px; font-size: 11px; vertical-align: top; }
-      tr:nth-child(even) { background: #f9f9f9; }
-      .result-pass { color: green; font-weight: bold; }
-      .result-fail { color: red; font-weight: bold; }
-      .footer { margin-top: 40px; display: flex; justify-content: space-between; }
-      .sign-box { border-top: 1px solid #333; width: 200px; text-align: center; padding-top: 5px; }
-    </style></head><body>
-      <h1>QC Checklist — ${cl.department}</h1>
-      <div class="header">
-        <p><strong>Company:</strong> Sky Gold & Diamonds Ltd</p>
-        <p><strong>Customer:</strong> ${cl.customer_name}</p>
-        <p><strong>Order:</strong> ${cl.order_ref}</p>
-        <p><strong>Date:</strong> ${new Date(cl.created_at).toLocaleDateString()}</p>
-        <p><strong>Status:</strong> ${cl.status}</p>
-      </div>
-      <table>
-        <tr><th>#</th><th>Check Point</th><th>Specification</th><th>Method</th><th>Page</th><th>Result</th><th>Remarks</th></tr>
-        ${items.rows.map(i => `<tr>
-          <td>${i.sequence_no}</td>
-          <td>${i.check_point}</td>
-          <td>${i.specification}</td>
-          <td>${i.verification_method || ''}</td>
-          <td>${i.manual_page_ref || ''}</td>
-          <td class="${i.result === 'pass' ? 'result-pass' : i.result === 'fail' ? 'result-fail' : ''}">${(i.result || '').toUpperCase()}</td>
-          <td>${i.remarks || ''}</td>
-        </tr>`).join('')}
-      </table>
-      <div class="footer">
-        <div class="sign-box">QA Inspector</div>
-        <div class="sign-box">QA Manager</div>
-        <div class="sign-box">Supervisor</div>
-      </div>
-    </body></html>`;
-
-    res.setHeader('Content-Type', 'text/html');
-    res.send(html);
+    const pdfBuffer = await generateChecklistPDF(parseInt(req.params.id));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="checklist-${req.params.id}.pdf"`);
+    res.send(pdfBuffer);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to generate PDF' });
+    console.error('Checklist PDF error:', err);
+    res.status(500).json({ error: 'PDF generation failed: ' + err.message });
   }
 });
 
