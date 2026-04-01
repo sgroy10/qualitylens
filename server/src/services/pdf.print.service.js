@@ -837,3 +837,120 @@ export async function generateTPQCPDF(tpqcId) {
     await browser.close();
   }
 }
+
+// ─── GENERATE CORRECTIVE MEASURES PDF ────────────────────────────
+export async function generateCorrectiveMeasuresPDF(orderId) {
+  const orderRes = await pool.query(
+    `SELECT o.*, c.name as customer_name FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.id = $1`,
+    [orderId]
+  );
+  if (orderRes.rows.length === 0) throw new Error('Order not found');
+  const order = orderRes.rows[0];
+
+  const resultsRes = await pool.query(
+    `SELECT tq.*, os.vendor_style_code, os.product_type, os.gold_kt
+     FROM tp_qc_results tq
+     LEFT JOIN order_styles os ON tq.style_id = os.id
+     WHERE tq.order_id = $1 AND tq.result IN ('fail', 'rework')
+     ORDER BY tq.id`,
+    [orderId]
+  );
+  const results = resultsRes.rows;
+
+  const html = `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #333; padding: 40px; }
+  .letterhead { border-bottom: 3px solid #1F3864; padding-bottom: 16px; margin-bottom: 24px; }
+  .letterhead h1 { color: #1F3864; font-size: 20px; }
+  .letterhead p { color: #666; font-size: 10px; }
+  .meta { margin-bottom: 20px; line-height: 1.8; }
+  .meta strong { color: #1F3864; }
+  .subject { background: #1F3864; color: white; padding: 10px 16px; font-size: 13px; font-weight: bold; margin-bottom: 20px; }
+  .intro { margin-bottom: 20px; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  th { background: #1F3864; color: white; padding: 8px; text-align: left; font-size: 10px; }
+  td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 10px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8f8f8; }
+  .result-fail { color: #C00000; font-weight: bold; }
+  .result-rework { color: #C55A11; font-weight: bold; }
+  .closing { margin-top: 32px; line-height: 1.8; }
+  .signoff { margin-top: 48px; display: flex; justify-content: space-between; }
+  .sign-box { width: 200px; }
+  .sign-box .line { border-top: 1px solid #333; padding-top: 4px; font-size: 10px; color: #666; }
+  .footer { margin-top: 40px; border-top: 2px solid #1F3864; padding-top: 8px; font-size: 9px; color: #888; text-align: center; }
+</style></head><body>
+  <div class="letterhead">
+    <h1>SKY GOLD & DIAMONDS LTD</h1>
+    <p>MIDC Shirvane, Navi Mumbai 400706 | CIN: L36911MH2015PLC265606</p>
+    <p>Quality Assurance Department</p>
+  </div>
+  <div class="meta">
+    <strong>Date:</strong> ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}<br/>
+    <strong>To:</strong> ${order.customer_name} — Quality Control Team<br/>
+    <strong>From:</strong> Sky Gold & Diamonds Ltd — QA Department<br/>
+    <strong>Order Ref:</strong> ${order.order_ref}
+  </div>
+  <div class="subject">Subject: Corrective Measures Report — Order ${order.order_ref}</div>
+  <div class="intro">
+    Dear QC Team,<br/><br/>
+    Please find below the corrective measures identified and implemented for the defects found during
+    third-party quality inspection of Order <strong>${order.order_ref}</strong>. We take these findings seriously
+    and have initiated immediate corrective actions to prevent recurrence.
+  </div>
+  <table>
+    <thead><tr>
+      <th>#</th><th>Style Code</th><th>Product</th><th>Gold KT</th><th>Result</th>
+      <th>Defect / TP Remarks</th><th>Corrective Action</th><th>Timeline</th>
+    </tr></thead>
+    <tbody>
+    ${results.map((r, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td><strong>${r.vendor_style_code || '-'}</strong></td>
+        <td>${r.product_type || '-'}</td>
+        <td>${r.gold_kt || '-'}</td>
+        <td class="${r.result === 'fail' ? 'result-fail' : 'result-rework'}">${r.result.toUpperCase()}</td>
+        <td>${r.tp_remarks || '-'}</td>
+        <td>${r.corrective_action || 'Under review'}</td>
+        <td>Immediate</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  ${results.length === 0 ? '<p style="text-align:center;color:#375623;font-weight:bold;">No failed or rework items found for this order.</p>' : ''}
+  <div class="closing">
+    We assure you that all corrective measures will be implemented before the next dispatch.
+    Our QA team will conduct an additional round of internal inspection to verify compliance.<br/><br/>
+    Please do not hesitate to reach out for any clarifications.<br/><br/>
+    Regards,<br/>
+    <strong>Quality Assurance Department</strong><br/>
+    Sky Gold & Diamonds Ltd
+  </div>
+  <div class="signoff">
+    <div class="sign-box">
+      <div class="line">QA Manager — Sky Gold</div>
+    </div>
+    <div class="sign-box">
+      <div class="line">Production Head — Sky Gold</div>
+    </div>
+  </div>
+  <div class="footer">
+    QualityLens — Corrective Measures Report | Order: ${order.order_ref} | ${new Date().toLocaleDateString('en-IN')}
+  </div>
+</body></html>`;
+
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' }
+    });
+    return pdfBuffer;
+  } finally {
+    await browser.close();
+  }
+}

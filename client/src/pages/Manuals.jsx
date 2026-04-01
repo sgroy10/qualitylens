@@ -79,6 +79,7 @@ export default function Manuals() {
               </div>
               <div className="flex items-center gap-3">
                 {statusBadge(m.status)}
+                {m.ai_summary && <span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full">AI Summary</span>}
                 <span className="text-xs text-gray-400">{new Date(m.created_at).toLocaleDateString()}</span>
               </div>
             </div>

@@ -103,6 +103,32 @@ export async function processManual(manualId, filePath) {
       // Continue without image extraction - not critical
     }
 
+    // Generate AI summary of the manual
+    try {
+      const allContent = pages.length > 0 ? pages.join('\n\n') : fullText;
+      if (allContent.trim()) {
+        const { parseJSON } = await import('./ai.service.js');
+        const summary = await parseJSON(
+          `You are analyzing a jewelry QA manual. Extract and return ONLY a valid JSON object with these fields:
+{
+  "approved_alloys": ["list of alloy codes and compositions mentioned"],
+  "key_tolerances": ["list of key measurements/tolerances like shank thickness, weight tolerance etc"],
+  "product_categories": ["list of product types covered like rings, earrings, pendants etc"],
+  "anti_tarnish_requirements": ["list of what needs anti-tarnish treatment"],
+  "finding_requirements": ["key finding specs mentioned like post types, clasps, backs"],
+  "summary": "One paragraph plain English summary of what this manual covers"
+}
+
+MANUAL TEXT:
+${allContent.substring(0, 30000)}`
+        );
+        await pool.query('UPDATE manuals SET ai_summary = $1 WHERE id = $2', [JSON.stringify(summary), manualId]);
+        console.log(`AI summary generated for manual ${manualId}`);
+      }
+    } catch (err) {
+      console.error(`Failed to generate AI summary for manual ${manualId}:`, err.message);
+    }
+
     // Mark as ready
     await pool.query('UPDATE manuals SET status = $1 WHERE id = $2', ['ready', manualId]);
     console.log(`Manual ${manualId} processing complete`);

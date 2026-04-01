@@ -154,4 +154,50 @@ router.delete('/:id/styles/:styleId', authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
+// Upload sample image for a style
+router.post('/:id/styles/:styleId/image', authenticate, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Image required' });
+    const relativePath = `/storage/orders/${req.params.id}/images/${req.file.filename}`;
+    await pool.query('UPDATE order_styles SET sample_image_path=$1 WHERE id=$2', [relativePath, req.params.styleId]);
+    res.json({ image_path: relativePath });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to upload image' });
+  }
+});
+
+// Re-parse order PDF for styles
+router.post('/:id/reparse', authenticate, async (req, res) => {
+  try {
+    const order = await pool.query('SELECT file_path FROM orders WHERE id = $1', [req.params.id]);
+    if (!order.rows[0]?.file_path) return res.status(400).json({ error: 'No PDF file for this order' });
+
+    // Clear existing styles and re-parse
+    await pool.query('DELETE FROM order_styles WHERE order_id = $1', [req.params.id]);
+
+    const pdfBuffer = await fs.readFile(order.rows[0].file_path);
+    const pdfData = await pdfParse(pdfBuffer);
+
+    const styles = await parseJSON(
+      `Extract all jewelry order line items from this text. Return JSON array with fields: vendor_style_code, dye_file_no, gold_kt, gold_colour, product_type, size, gross_weight. Return ONLY valid JSON, no other text.\n\nORDER TEXT:\n${pdfData.text}`
+    );
+
+    if (Array.isArray(styles)) {
+      for (const style of styles) {
+        await pool.query(
+          `INSERT INTO order_styles (order_id, vendor_style_code, dye_file_no, gold_kt, gold_colour, product_type, size, gross_weight)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [req.params.id, style.vendor_style_code, style.dye_file_no, style.gold_kt, style.gold_colour, style.product_type, style.size, style.gross_weight]
+        );
+      }
+    }
+
+    const result = await pool.query('SELECT * FROM order_styles WHERE order_id = $1', [req.params.id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Reparse error:', err);
+    res.status(500).json({ error: 'Failed to reparse: ' + err.message });
+  }
+});
+
 export default router;

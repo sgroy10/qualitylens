@@ -71,6 +71,28 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
+router.get('/:id/file', authenticate, async (req, res) => {
+  try {
+    const manual = await pool.query('SELECT file_path, file_name FROM manuals WHERE id = $1', [req.params.id]);
+    if (manual.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+    const filePath = manual.rows[0].file_path;
+    try {
+      await fs.access(filePath);
+    } catch {
+      return res.status(404).json({ error: 'File not found on disk' });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${manual.rows[0].file_name}"`);
+    const { createReadStream } = await import('fs');
+    createReadStream(filePath).pipe(res);
+  } catch (err) {
+    console.error('Serve PDF error:', err);
+    res.status(500).json({ error: 'Failed to serve PDF' });
+  }
+});
+
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     await pool.query('DELETE FROM manuals WHERE id = $1', [req.params.id]);

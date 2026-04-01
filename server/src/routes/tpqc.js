@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import pool from '../db/index.js';
 import { authenticate } from '../middleware/auth.js';
-import { generateTPQCPDF } from '../services/pdf.print.service.js';
+import { generateTPQCPDF, generateCorrectiveMeasuresPDF } from '../services/pdf.print.service.js';
 
 const router = Router();
 
@@ -50,6 +50,18 @@ router.put('/:id', authenticate, async (req, res) => {
     res.json(r.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update TP QC result' });
+  }
+});
+
+router.get('/corrective-measures/:orderId/pdf', authenticate, async (req, res) => {
+  try {
+    const pdfBuffer = await generateCorrectiveMeasuresPDF(parseInt(req.params.orderId));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="corrective-measures-${req.params.orderId}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('Corrective measures PDF error:', err);
+    res.status(500).json({ error: 'PDF generation failed: ' + err.message });
   }
 });
 

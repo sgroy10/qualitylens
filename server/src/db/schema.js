@@ -148,6 +148,12 @@ const createTables = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    // Add new columns if they don't exist
+    await client.query(`
+      ALTER TABLE manuals ADD COLUMN IF NOT EXISTS ai_summary JSONB;
+      ALTER TABLE checklist_items ADD COLUMN IF NOT EXISTS reference_image_path TEXT;
+    `);
+
     console.log('All tables created successfully');
   } finally {
     client.release();
