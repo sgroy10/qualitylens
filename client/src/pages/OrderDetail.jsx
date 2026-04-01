@@ -344,6 +344,26 @@ export default function OrderDetail() {
                 </div>
               </div>
               <div><label className="label">Remarks</label><textarea className="input" rows={2} value={styleForm.remarks || ''} onChange={e => setStyleForm({...styleForm, remarks: e.target.value})} /></div>
+              <div>
+                <label className="label">Sample Image</label>
+                {styleForm.sample_image_path && (
+                  <img src={styleForm.sample_image_path} alt="Sample" className="w-24 h-24 object-cover rounded border mb-2" />
+                )}
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-accent hover:underline">
+                  {styleForm.sample_image_path ? 'Change Image' : 'Upload Sample Image'}
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    try {
+                      const res = await api.post(`/orders/${id}/styles/${editingStyle.id}/image`, formData);
+                      setStyleForm({...styleForm, sample_image_path: res.data.image_path});
+                      toast.success('Image uploaded');
+                    } catch { toast.error('Image upload failed'); }
+                  }} />
+                </label>
+              </div>
               <button onClick={() => updateStyleMutation.mutate({ styleId: editingStyle.id, ...styleForm })}
                 className="btn-primary w-full" disabled={updateStyleMutation.isPending}>
                 {updateStyleMutation.isPending ? 'Saving...' : 'Save Changes'}

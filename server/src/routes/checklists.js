@@ -72,7 +72,9 @@ router.get('/:id', authenticate, async (req, res) => {
     if (checklist.rows.length === 0) return res.status(404).json({ error: 'Not found' });
 
     const items = await pool.query(
-      `SELECT ci.*, mi.image_path, mi.caption as image_caption FROM checklist_items ci
+      `SELECT ci.*, ci.reference_image_path,
+              mi.image_path as manual_image_path, mi.caption as image_caption
+       FROM checklist_items ci
        LEFT JOIN manual_images mi ON ci.reference_image_id = mi.id
        WHERE ci.checklist_id = $1 ORDER BY ci.sequence_no`,
       [req.params.id]

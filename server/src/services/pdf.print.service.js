@@ -1,5 +1,23 @@
 import puppeteer from 'puppeteer';
+import fs from 'fs/promises';
+import path from 'path';
 import pool from '../db/index.js';
+
+async function imageToBase64(imagePath) {
+  try {
+    if (!imagePath) return null;
+    let fullPath = imagePath;
+    if (imagePath.startsWith('/storage/')) {
+      fullPath = path.join(process.env.STORAGE_PATH || './storage', imagePath.replace('/storage/', ''));
+    }
+    const buffer = await fs.readFile(fullPath);
+    const ext = path.extname(fullPath).toLowerCase().replace('.', '');
+    const mimeType = ext === 'jpg' ? 'jpeg' : ext;
+    return `data:image/${mimeType};base64,${buffer.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
 
 // ─── LAUNCH BROWSER ──────────────────────────────────────────────
 async function launchBrowser() {
@@ -37,8 +55,8 @@ export async function generateChecklistPDF(checklistId) {
 
   // Fetch checklist items
   const itemsRes = await pool.query(
-    `SELECT ci.*, u.name as checked_by_name,
-            mi.image_path as ref_image_path,
+    `SELECT ci.*, ci.reference_image_path, u.name as checked_by_name,
+            mi.image_path as manual_image_path,
             mi.caption as ref_image_caption
      FROM checklist_items ci
      LEFT JOIN users u ON ci.checked_by = u.id
@@ -47,7 +65,15 @@ export async function generateChecklistPDF(checklistId) {
      ORDER BY ci.sequence_no`,
     [checklistId]
   );
-  const items = itemsRes.rows;
+
+  // Convert images to base64 for PDF embedding
+  const items = await Promise.all(
+    itemsRes.rows.map(async (item) => {
+      const imgPath = item.reference_image_path || item.manual_image_path;
+      const imgBase64 = await imageToBase64(imgPath);
+      return { ...item, imgBase64 };
+    })
+  );
 
   // Fetch order styles for context
   const stylesRes = await pool.query(
@@ -408,7 +434,8 @@ export async function generateChecklistPDF(checklistId) {
             : '<span class="badge pending">Pending</span>'}
           ${item.checked_by_name ? `<div style="font-size:8px;color:#888;margin-top:2px;">${item.checked_by_name}</div>` : ''}
         </td>
-      </tr>`).join('')}
+      </tr>
+      ${item.imgBase64 ? `<tr><td colspan="6" style="padding:4px 8px 8px;"><img src="${item.imgBase64}" style="max-height:80px;max-width:200px;object-fit:contain;border:1px solid #eee;border-radius:4px;" alt="Reference" /></td></tr>` : ''}`).join('')}
     </tbody>
   </table>
 
