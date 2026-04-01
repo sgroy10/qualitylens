@@ -71,7 +71,16 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
-router.get('/:id/file', authenticate, async (req, res) => {
+router.get('/:id/file', async (req, res) => {
+  // Accept token from query param (for iframe embedding) or header
+  const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+  try {
+    const jwt = await import('jsonwebtoken');
+    jwt.default.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
   try {
     const manual = await pool.query('SELECT file_path, file_name FROM manuals WHERE id = $1', [req.params.id]);
     if (manual.rows.length === 0) return res.status(404).json({ error: 'Not found' });

@@ -95,7 +95,7 @@ export default function ManualDetail() {
       {tab === 'pdf' && (
         <div className="card p-0 overflow-hidden">
           <iframe
-            src={`/api/manuals/${id}/file`}
+            src={`/api/manuals/${id}/file?token=${localStorage.getItem('token')}`}
             className="w-full border-0"
             style={{ height: 'calc(100vh - 340px)', minHeight: '500px' }}
             title="QA Manual PDF"
